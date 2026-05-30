@@ -10,21 +10,23 @@
         body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 15px; text-align: center; }
         h1 { color: #1a73e8; font-size: 24px; }
         .box { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        input, button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border-radius: 5px; box-sizing: border-box; }
+        input, button, .irctc-link { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border-radius: 5px; box-sizing: border-box; display: block; }
         button { background-color: #1a73e8; color: white; font-weight: bold; border: none; min-height: 48px; }
+        /* नए आईआरसीटीसी बटन का स्टाइल जो एक सीधा लिंक है */
+        .irctc-link { background-color: #e67e22; color: white; font-weight: bold; text-decoration: none; text-align: center; line-height: 20px; }
         #video { width: 100%; max-width: 100%; height: auto; border-radius: 8px; display: none; }
         #status { font-weight: bold; color: #d93025; font-size: 18px; }
     </style>
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.३) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.४) 🚉</h1>
     
     <div class="box">
         <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
         <button onclick="searchStation()">सर्च और एआई सुरक्षा शुरू करें</button>
         
-        <button onclick="openIRCTCApp()" style="background-color: #e67e22; margin-top: 15px;">आईआरसीटीसी ऑफिशियल ऐप खोलें</button>
+        <a class="irctc-link" href="intent://#Intent;package=cris.org.in.prs.ima;end" role="button">आईआरसीटीसी ऑफिशियल ऐप खोलें</a>
         
         <div id="stationResult" style="font-size: 18px; font-weight: bold; margin-top: 10px;"></div>
     </div>
@@ -88,25 +90,6 @@
                 resultDiv.innerText = "कोड अज्ञात";
                 speak("कोड नहीं मिला। कृपया मैनुअल सुरक्षा मोड ऑन करें।");
             }
-        }
-
-        // ब्राउज़र सुरक्षा दीवार को पार करने वाला नया फंक्शन
-        function openIRCTCApp() {
-            speak("आईआरसीटीसी ऐप ओपन करने का प्रयास किया जा रहा है।");
-            
-            // यह एंड्रॉइड की डीप-लिंक यूआरएल स्कीम है जो क्रोम में १००% काम करती है
-            let appUrl = "android-app://cris.org.in.prs.ima/http/irctc.co.in";
-            let webUrl = "https://www.irctc.co.in/nget/train-search";
-
-            // क्रोम को ऐप खोलने का सीधा निर्देश
-            window.location.href = appUrl;
-
-            // बैकअप: यदि मोबाइल सुरक्षा के कारण ऐप नहीं खुलती, तो यह बिना एरर के तुरंत क्रोम में ही आईआरसीटीसी की बुकिंग वेबसाइट खोल देगा
-            setTimeout(function() {
-                if (!document.hidden) {
-                    window.location.href = webUrl;
-                }
-            }, 1500);
         }
 
         async function startCamera() {
