@@ -92,20 +92,20 @@
             }
         }
 
-        // नया जोड़ा गया आईआरसीटीसी डीप लिंकिंग फंक्शन
+        // सुधरा हुआ आईआरसीटीसी डीप लिंकिंग फंक्शन (नया पैकेज नाम)
         function openIRCTCApp() {
             speak("आईआरसीटीसी आधिकारिक ऐप ओपन हो रही है।");
             
-            // आधिकारिक एंड्रॉइड इंटेंट लिंक
-            let intentUrl = "intent://#Intent;package=com.cris.irs;end";
+            // आईआरसीटीसी ऐप का बिल्कुल नया और अपडेटेड पैकेज नाम
+            let intentUrl = "intent://#Intent;package=com.irctc.tc;end";
             
-            // प्ले-स्टोर लिंक (यदि मोबाइल में ऐप न हो तो बैकअप के लिए)
-            let playStoreUrl = "https://play.google.com/store/apps/details?id=com.cris.irs";
+            // प्ले-स्टोर का नया डायरेक्ट लिंक
+            let playStoreUrl = "https://play.google.com/store/apps/details?id=com.irctc.tc";
 
             // क्रोम को ऐप ओपन करने का निर्देश देना
             window.location.href = intentUrl;
 
-            // यदि २ सेकंड में ऐप ओपन नहीं होती है, तो प्ले-स्टोर खोल देगा
+            // यदि २ सेकंड में ऐप ओपन नहीं होती है, तो प्ले-स्टोर का नया पेज खोल देगा
             setTimeout(function() {
                 if (!document.hidden) {
                     window.open(playStoreUrl, "_blank");
