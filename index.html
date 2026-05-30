@@ -18,7 +18,7 @@
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.१) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.२) 🚉</h1>
     
     <div class="box">
         <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
@@ -46,7 +46,6 @@
         function speak(text, isCritical = false) {
             if (text === lastSpoken && !isCritical) return;
             
-            // यदि पटरी या खंभा ३ फीट पर है, तो तुरंत पुरानी आवाज़ को काटकर ज़ोर से अलर्ट करेगा
             if (isCritical) {
                 window.speechSynthesis.cancel();
             }
@@ -55,8 +54,8 @@
             utterance.lang = 'hi-IN';
             
             if (isCritical) {
-                utterance.rate = 1.2; // गंभीर खतरे में तेज़ आवाज़
-                utterance.pitch = 1.3; // तीखी आवाज़ ताकि शोर में भी सुनाई दे
+                utterance.rate = 1.2; 
+                utterance.pitch = 1.3; 
             } else {
                 utterance.rate = 1.0;
             }
@@ -64,7 +63,6 @@
             window.speechSynthesis.speak(utterance);
             lastSpoken = text;
             
-            // सामान्य वाक्यों के लिए ३ सेकंड का गैप, क्रिटिकल के लिए तुरंत अलर्ट
             setTimeout(() => { lastSpoken = ""; }, isCritical ? 1000 : 3000);
         }
 
@@ -92,20 +90,20 @@
             }
         }
 
-        // सुधरा हुआ आईआरसीटीसी डीप लिंकिंग फंक्शन (नया पैकेज नाम)
+        // बिल्कुल सटीक पैकेज नाम वाला सुधरा हुआ फंक्शन
         function openIRCTCApp() {
             speak("आईआरसीटीसी आधिकारिक ऐप ओपन हो रही है।");
             
-            // आईआरसीटीसी ऐप का बिल्कुल नया और अपडेटेड पैकेज नाम
-            let intentUrl = "intent://#Intent;package=com.irctc.tc;end";
+            // आपके द्वारा दिए गए सटीक पैकेज नाम (cris.org.in.prs.ima) के साथ एंड्रॉइड इंटेंट
+            let intentUrl = "intent://#Intent;package=cris.org.in.prs.ima;end";
             
-            // प्ले-स्टोर का नया डायरेक्ट लिंक
-            let playStoreUrl = "https://play.google.com/store/apps/details?id=com.irctc.tc";
+            // आईआरसीटीसी ऐप का सही प्ले-स्टोर लिंक (यदि फोन में न हो तो)
+            let playStoreUrl = "https://play.google.com/store/apps/details?id=cris.org.in.prs.ima";
 
-            // क्रोम को ऐप ओपन करने का निर्देश देना
+            // क्रोम ब्राउज़र को ऐप ओपन करने का निर्देश देना
             window.location.href = intentUrl;
 
-            // यदि २ सेकंड में ऐप ओपन नहीं होती है, तो प्ले-स्टोर का नया पेज खोल देगा
+            // बैकअप टाइमर: यदि क्रोम ऐप को ब्लॉक करे या ऐप न हो, तो २ सेकंड में सही प्ले-स्टोर पेज खोलेगा
             setTimeout(function() {
                 if (!document.hidden) {
                     window.open(playStoreUrl, "_blank");
@@ -155,20 +153,16 @@
                 const predictions = await model.detect(video);
                 predictions.forEach(p => {
                     let obj = p.class;
-                    let boxSize = p.bbox[2] * p.bbox[3]; // दूरी नापने के लिए बॉक्स साइज
+                    let boxSize = p.bbox[2] * p.bbox[3]; 
                     let videoSize = video.videoWidth * video.videoHeight;
                     let percentage = (boxSize / videoSize) * 100;
 
                     if (p.score > 0.50) {
-                        
-                        // १. पटरी (Track) या बड़ा गड्ढा/खाली जगह का लॉजिक
                         if (obj === "stop sign" || obj === "snowboard" || obj === "skateboard") { 
                             if (percentage > 25) { 
                                 speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
                             }
                         }
-                        
-                        // २. खंभा या पिलर का लॉजिक (सिर बचाने के लिए)
                         else if (obj === "fire hydrant" || obj === "traffic light") {
                             if (percentage > 20) { 
                                 speak("सावधान! ठीक सामने खंभा है, सिर बचाएं।", true);
@@ -176,8 +170,6 @@
                                 speak("आगे दूर एक खंभा दिख रहा है।");
                             }
                         }
-                        
-                        // ३. इंसान या सह-यात्री
                         else if (obj === "person") {
                             if (percentage > 35) { 
                                 speak("संभलकर चलें, ठीक सामने कोई व्यक्ति है।");
@@ -185,8 +177,6 @@
                                 speak("आगे एक व्यक्ति है।");
                             }
                         }
-                        
-                        // ४. कुर्सी या बेंच (विश्राम के लिए)
                         else if (obj === "chair" || obj === "bench") {
                             if (percentage > 30) {
                                 speak("सामने बैठने की सीट आ गई है।");
@@ -194,8 +184,6 @@
                                 speak("आगे दूर बैठने की बेंच है।");
                             }
                         }
-
-                        // ५. सीढ़ियाँ या पुल का मार्ग
                         else if (obj === "stairs") {
                             if (percentage > 25) {
                                 speak("सामने पुल की सीढ़ियाँ हैं, धीरे-धीरे चढ़ें।");
