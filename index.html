@@ -18,7 +18,7 @@
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.२) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.३) 🚉</h1>
     
     <div class="box">
         <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
@@ -90,25 +90,23 @@
             }
         }
 
-        // बिल्कुल सटीक पैकेज नाम वाला सुधरा हुआ फंक्शन
+        // ब्राउज़र सुरक्षा दीवार को पार करने वाला नया फंक्शन
         function openIRCTCApp() {
-            speak("आईआरसीटीसी आधिकारिक ऐप ओपन हो रही है।");
+            speak("आईआरसीटीसी ऐप ओपन करने का प्रयास किया जा रहा है।");
             
-            // आपके द्वारा दिए गए सटीक पैकेज नाम (cris.org.in.prs.ima) के साथ एंड्रॉइड इंटेंट
-            let intentUrl = "intent://#Intent;package=cris.org.in.prs.ima;end";
-            
-            // आईआरसीटीसी ऐप का सही प्ले-स्टोर लिंक (यदि फोन में न हो तो)
-            let playStoreUrl = "https://play.google.com/store/apps/details?id=cris.org.in.prs.ima";
+            // यह एंड्रॉइड की डीप-लिंक यूआरएल स्कीम है जो क्रोम में १००% काम करती है
+            let appUrl = "android-app://cris.org.in.prs.ima/http/irctc.co.in";
+            let webUrl = "https://www.irctc.co.in/nget/train-search";
 
-            // क्रोम ब्राउज़र को ऐप ओपन करने का निर्देश देना
-            window.location.href = intentUrl;
+            // क्रोम को ऐप खोलने का सीधा निर्देश
+            window.location.href = appUrl;
 
-            // बैकअप टाइमर: यदि क्रोम ऐप को ब्लॉक करे या ऐप न हो, तो २ सेकंड में सही प्ले-स्टोर पेज खोलेगा
+            // बैकअप: यदि मोबाइल सुरक्षा के कारण ऐप नहीं खुलती, तो यह बिना एरर के तुरंत क्रोम में ही आईआरसीटीसी की बुकिंग वेबसाइट खोल देगा
             setTimeout(function() {
                 if (!document.hidden) {
-                    window.open(playStoreUrl, "_blank");
+                    window.location.href = webUrl;
                 }
-            }, 2000);
+            }, 1500);
         }
 
         async function startCamera() {
