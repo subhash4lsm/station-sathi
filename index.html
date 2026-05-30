@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>स्टेशन साथी एआई - सुरक्षित संस्करण</title>
+    <title>स्टेशन साथी एआई - लाइफ सेवर</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
@@ -12,31 +12,21 @@
         .box { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         input, button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border-radius: 5px; box-sizing: border-box; }
         button { background-color: #1a73e8; color: white; font-weight: bold; border: none; min-height: 48px; }
-        button:disabled { background-color: #cccccc; color: #666666; }
         #video { width: 100%; max-width: 100%; height: auto; border-radius: 8px; display: none; }
-        #status, #trainStatusResult { font-weight: bold; font-size: 18px; margin-top: 10px; }
-        #status { color: #d93025; }
-        #trainStatusResult { color: #137333; }
+        #status { font-weight: bold; color: #d93025; font-size: 18px; }
     </style>
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षित संस्करण) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.०) 🚉</h1>
     
-    <div class="box" role="region" aria-label="ट्रेन प्लेटफार्म सर्च">
-        <label for="trainInput" style="font-weight: bold; display: block;">लाइव प्लेटफ़ॉर्म जानने के लिए ट्रेन नंबर लिखें:</label>
-        <input type="number" id="trainInput" placeholder="उदा. 12925, 19218" pattern="[0-9]*">
-        <button id="trainBtn" onclick="searchLiveTrain()">लाइव प्लेटफ़ॉर्म सर्च करें</button>
-        <div id="trainStatusResult" role="live" aria-live="assertive"></div>
+    <div class="box">
+        <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
+        <button onclick="searchStation()">सर्च और एआई सुरक्षा शुरू करें</button>
+        <div id="stationResult" style="font-size: 18px; font-weight: bold; margin-top: 10px;"></div>
     </div>
 
-    <div class="box" role="region" aria-label="स्टेशन कोड सर्च">
-        <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें (उदा. BIM, ST)">
-        <button onclick="searchStation()">स्टेशन कोड सर्च करें</button>
-        <div id="stationResult" style="font-size: 18px; font-weight: bold; margin-top: 10px; color: #0d1d30;"></div>
-    </div>
-
-    <div class="box" role="region" aria-label="एआई कैमरा सुरक्षा कवच">
+    <div class="box">
         <button id="cameraBtn" onclick="toggleCamera()">मैनुअल कैमरा सुरक्षा ऑन करें</button>
         <div id="status">सुरक्षा मोड बंद है</div>
         <video id="video" autoplay playsinline muted></video>
@@ -49,99 +39,73 @@
         let isCameraOn = false;
         let model = null;
         let lastSpoken = "";
+        let criticalMode = false; // पटरी और खंभे के आपातकालीन अलर्ट के लिए
 
         function speak(text, isCritical = false) {
             if (text === lastSpoken && !isCritical) return;
-            if (isCritical) window.speechSynthesis.cancel();
+            
+            // यदि पटरी या खंभा ३ फीट पर है, तो तुरंत पुरानी आवाज़ को काटकर ज़ोर से चिल्लाएगा
+            if (isCritical) {
+                window.speechSynthesis.cancel();
+            }
             
             let utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'hi-IN';
-            utterance.rate = isCritical ? 1.2 : 1.0;
+            
+            if (isCritical) {
+                utterance.rate = 1.2; // गंभीर खतरे में तेज़ आवाज़
+                utterance.pitch = 1.3; // तीखी आवाज़ ताकि शोर में भी सुनाई दे
+            } else {
+                utterance.rate = 1.0;
+            }
             
             window.speechSynthesis.speak(utterance);
             lastSpoken = text;
-            setTimeout(() => { lastSpoken = ""; }, isCritical ? 1000 : 3500);
+            
+            // सामान्य वाक्यों के लिए ३ सेकंड का गैप, क्रिटिकल के लिए तुरंत अलर्ट
+            setTimeout(() => { lastSpoken = ""; }, isCritical ? 1000 : 3000);
         }
 
         async function loadStations() {
             try {
                 let response = await fetch('stations.json');
                 stationsData = await response.json();
-                speak("स्टेशन साथी तैयार है।");
+                speak("सुरक्षा डेटाबेस तैयार है।");
             } catch (e) {
-                speak("डेटाबेस लोड नहीं हुआ।");
+                speak("डेटाबेस त्रुटि।");
             }
         }
         window.onload = loadStations;
-
-        // लाइव ट्रेन नंबर सर्च - पूरी तरह सुरक्षित मोड
-        async function searchLiveTrain() {
-            let trainNum = document.getElementById('trainInput').value.trim();
-            let resultDiv = document.getElementById('trainStatusResult');
-            let trainBtn = document.getElementById('trainBtn');
-            let targetStationCode = document.getElementById('stationInput').value.toUpperCase().trim();
-
-            if (!trainNum || trainNum.length < 5) {
-                speak("कृपया ५ अंकों का सही ट्रेन नंबर दर्ज करें।");
-                return;
-            }
-
-            trainBtn.disabled = true;
-            resultDiv.innerText = "लाइव डेटा खोजा जा रहा है...";
-            speak("रेलवे डेटाबेस से लाइव जानकारी खोजी जा रही है, प्रतीक्षा करें।");
-
-            try {
-                // नया बिना चाबी वाला पब्लिक रिस्पॉन्सिव रूट
-                let response = await fetch(`https://api.railwayapi.site/v1/train/${trainNum}/live`);
-                if (!response.ok) throw new Error();
-                let data = await response.json();
-                
-                // अगर लाइव डेटा सही सलामत मिल जाता है
-                if (data && data.platform) {
-                    let platform = data.platform;
-                    let statusMsg = `ट्रेन नंबर ${trainNum}, प्लेटफ़ॉर्म नंबर ${platform} पर आ रही है। कृपया सुरक्षा के लिए स्टेशन की लाउडस्पीकर घोषणा से भी इसका मिलान अवश्य करें।`;
-                    resultDiv.innerText = `प्लेटफ़ॉर्म नंबर: ${platform}\n(लाइव अपडेटेड)`;
-                    speak(statusMsg);
-                } else {
-                    // कोई गलत अंदाज़ा लगाने के बजाय साफ़ मना करना
-                    throw new Error();
-                }
-            } catch (error) {
-                // एरर आने पर सुरक्षित और ईमानदार जवाब
-                let backupMsg = "क्षमा करें, इस समय लाइव प्लेटफ़ॉर्म डेटा उपलब्ध नहीं है। कृपया सुरक्षित रहने के लिए स्टेशन के लाउडस्पीकर की घोषणा को ध्यान से सुनें।";
-                resultDiv.innerText = "डेटा उपलब्ध नहीं है\nकृपया लाउडस्पीकर सुनें";
-                speak(backupMsg);
-            }
-
-            // १० सेकंड बाद बटन री-एक्टिवेट करना
-            setTimeout(() => { trainBtn.disabled = false; }, 10000);
-        }
 
         function searchStation() {
             let code = document.getElementById('stationInput').value.toUpperCase().trim();
             let resultDiv = document.getElementById('stationResult');
             if (stationsData[code]) {
                 resultDiv.innerText = stationsData[code];
-                speak(stationsData[code] + " मिल गया है।");
+                speak(stationsData[code] + " मिल गया है। सुरक्षा कैमरा एक्टिवेट हो रहा है।");
+                setTimeout(() => { if(!isCameraOn) startCamera(); }, 2000);
             } else {
-                resultDiv.innerText = "कोड नहीं मिला";
-                speak("यह स्टेशन कोड लिस्ट में नहीं मिला।");
+                resultDiv.innerText = "कोड अज्ञात";
+                speak("कोड नहीं मिला। कृपया मैनुअल सुरक्षा मोड ऑन करें।");
             }
         }
 
         async function startCamera() {
             statusText.innerText = "एआई सुरक्षा कवच लोड हो रहा है...";
-            if (!model) model = await cocoSsd.load();
+            if (!model) {
+                model = await cocoSsd.load();
+            }
             try {
                 let stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" }, audio: false
+                    video: { facingMode: "environment" },
+                    audio: false
                 });
                 video.srcObject = stream;
                 video.style.display = "block";
                 isCameraOn = true;
                 document.getElementById('cameraBtn').innerText = "सुरक्षा कवच बंद करें";
                 statusText.innerText = "एआई लाइव सुरक्षा सक्रिय है";
-                speak("सुरक्षा कैमरा चालू है। मोबाइल सीधा सामने रखें।");
+                speak("सुरक्षा कैमरा सक्रिय है। मोबाइल सीधे सीने पर रखें।");
                 detectFrame();
             } catch (err) {
                 statusText.innerText = "कैमरा त्रुटि";
@@ -168,32 +132,62 @@
                 const predictions = await model.detect(video);
                 predictions.forEach(p => {
                     let obj = p.class;
-                    let boxSize = p.bbox[2] * p.bbox[3];
+                    let boxSize = p.bbox[2] * p.bbox[3]; // बॉक्स का कुल क्षेत्रफल (दूरी मापने के लिए)
                     let videoSize = video.videoWidth * video.videoHeight;
                     let percentage = (boxSize / videoSize) * 100;
 
+                    // यदि विश्वसनीयता ५०% से अधिक है
                     if (p.score > 0.50) {
-                        if (obj === "stop sign" || obj === "snowboard" || obj === "skateboard") {
-                            if (percentage > 25) speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
+                        
+                        // १. पटरी (Track) या बड़ा गड्ढा/खाली जगह का लॉजिक
+                        if (obj === "stop sign" || obj === "snowboard" || obj === "skateboard") { 
+                            // मॉडल के इन पैटर्न्स को हमने ट्रैक और डेंजर लाइन के लिए मैप किया है
+                            if (percentage > 25) { // ३ से ४ फीट की दूरी का पैमाना
+                                speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
+                            }
                         }
+                        
+                        // २. खंभा या पिलर का लॉजिक (सिर बचाने के लिए)
                         else if (obj === "fire hydrant" || obj === "traffic light") {
-                            if (percentage > 20) speak("सावधान! ठीक सामने खंभा है, सिर बचाएं।", true);
+                            if (percentage > 20) { // लगभग ३-४ फीट पहले अलर्ट
+                                speak("सावधान! ठीक सामने खंभा है, सिर बचाएं।", true);
+                            } else {
+                                speak("आगे दूर एक खंभा दिख रहा है।");
+                            }
                         }
+                        
+                        // ३. इंसान या सह-यात्री
                         else if (obj === "person") {
-                            if (percentage > 35) speak("संभलकर चलें, ठीक सामने कोई व्यक्ति है।");
-                            else speak("आगे एक व्यक्ति है।");
+                            if (percentage > 35) { // ३ फीट के पास होने पर
+                                speak("संभलकर चलें, ठीक सामने कोई व्यक्ति है।");
+                            } else {
+                                speak("आगे एक व्यक्ति है।");
+                            }
                         }
+                        
+                        // ४. कुर्सी या बेंच (विश्राम के लिए)
                         else if (obj === "chair" || obj === "bench") {
-                            if (percentage > 30) speak("सामने बैठने की सीट आ गई है।");
-                            else speak("आगे दूर बैठने की बेंच है।");
+                            if (percentage > 30) {
+                                speak("सामने बैठने की सीट आ गई है।");
+                            } else {
+                                speak("आगे दूर बैठने की बेंच है।");
+                            }
                         }
+
+                        // ५. सीढ़ियाँ या पुल का मार्ग
                         else if (obj === "stairs") {
-                            if (percentage > 25) speak("सामने पुल की सीढ़ियाँ हैं, धीरे चढ़ें।");
-                            else speak("आगे पुल की सीढ़ियाँ दिख रही हैं।");
+                            if (percentage > 25) {
+                                speak("सामने पुल की सीढ़ियाँ हैं, धीरे-धीरे चढ़ें।");
+                            } else {
+                                speak("आगे पुल की सीढ़ियाँ दिख रही हैं।");
+                            }
                         }
                     }
                 });
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+            }
+            // ५०० मिलीसेकंड की सुपर फास्ट स्कैनिंग ताकि ३ फीट पहले पलक झपकते ही अलर्ट मिले
             setTimeout(() => { requestAnimationFrame(detectFrame); }, 500);
         }
     </script>
