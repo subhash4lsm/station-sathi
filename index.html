@@ -18,11 +18,14 @@
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.०) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.१) 🚉</h1>
     
     <div class="box">
         <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
         <button onclick="searchStation()">सर्च और एआई सुरक्षा शुरू करें</button>
+        
+        <button onclick="openIRCTCApp()" style="background-color: #e67e22; margin-top: 15px;">आईआरसीटीसी ऑफिशियल ऐप खोलें</button>
+        
         <div id="stationResult" style="font-size: 18px; font-weight: bold; margin-top: 10px;"></div>
     </div>
 
@@ -39,12 +42,11 @@
         let isCameraOn = false;
         let model = null;
         let lastSpoken = "";
-        let criticalMode = false; // पटरी और खंभे के आपातकालीन अलर्ट के लिए
 
         function speak(text, isCritical = false) {
             if (text === lastSpoken && !isCritical) return;
             
-            // यदि पटरी या खंभा ३ फीट पर है, तो तुरंत पुरानी आवाज़ को काटकर ज़ोर से चिल्लाएगा
+            // यदि पटरी या खंभा ३ फीट पर है, तो तुरंत पुरानी आवाज़ को काटकर ज़ोर से अलर्ट करेगा
             if (isCritical) {
                 window.speechSynthesis.cancel();
             }
@@ -90,6 +92,27 @@
             }
         }
 
+        // नया जोड़ा गया आईआरसीटीसी डीप लिंकिंग फंक्शन
+        function openIRCTCApp() {
+            speak("आईआरसीटीसी आधिकारिक ऐप ओपन हो रही है।");
+            
+            // आधिकारिक एंड्रॉइड इंटेंट लिंक
+            let intentUrl = "intent://#Intent;package=com.cris.irs;end";
+            
+            // प्ले-स्टोर लिंक (यदि मोबाइल में ऐप न हो तो बैकअप के लिए)
+            let playStoreUrl = "https://play.google.com/store/apps/details?id=com.cris.irs";
+
+            // क्रोम को ऐप ओपन करने का निर्देश देना
+            window.location.href = intentUrl;
+
+            // यदि २ सेकंड में ऐप ओपन नहीं होती है, तो प्ले-स्टोर खोल देगा
+            setTimeout(function() {
+                if (!document.hidden) {
+                    window.open(playStoreUrl, "_blank");
+                }
+            }, 2000);
+        }
+
         async function startCamera() {
             statusText.innerText = "एआई सुरक्षा कवच लोड हो रहा है...";
             if (!model) {
@@ -132,24 +155,22 @@
                 const predictions = await model.detect(video);
                 predictions.forEach(p => {
                     let obj = p.class;
-                    let boxSize = p.bbox[2] * p.bbox[3]; // बॉक्स का कुल क्षेत्रफल (दूरी मापने के लिए)
+                    let boxSize = p.bbox[2] * p.bbox[3]; // दूरी नापने के लिए बॉक्स साइज
                     let videoSize = video.videoWidth * video.videoHeight;
                     let percentage = (boxSize / videoSize) * 100;
 
-                    // यदि विश्वसनीयता ५०% से अधिक है
                     if (p.score > 0.50) {
                         
                         // १. पटरी (Track) या बड़ा गड्ढा/खाली जगह का लॉजिक
                         if (obj === "stop sign" || obj === "snowboard" || obj === "skateboard") { 
-                            // मॉडल के इन पैटर्न्स को हमने ट्रैक और डेंजर लाइन के लिए मैप किया है
-                            if (percentage > 25) { // ३ से ४ फीट की दूरी का पैमाना
+                            if (percentage > 25) { 
                                 speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
                             }
                         }
                         
                         // २. खंभा या पिलर का लॉजिक (सिर बचाने के लिए)
                         else if (obj === "fire hydrant" || obj === "traffic light") {
-                            if (percentage > 20) { // लगभग ३-४ फीट पहले अलर्ट
+                            if (percentage > 20) { 
                                 speak("सावधान! ठीक सामने खंभा है, सिर बचाएं।", true);
                             } else {
                                 speak("आगे दूर एक खंभा दिख रहा है।");
@@ -158,7 +179,7 @@
                         
                         // ३. इंसान या सह-यात्री
                         else if (obj === "person") {
-                            if (percentage > 35) { // ३ फीट के पास होने पर
+                            if (percentage > 35) { 
                                 speak("संभलकर चलें, ठीक सामने कोई व्यक्ति है।");
                             } else {
                                 speak("आगे एक व्यक्ति है।");
@@ -187,7 +208,6 @@
             } catch (e) {
                 console.error(e);
             }
-            // ५०० मिलीसेकंड की सुपर फास्ट स्कैनिंग ताकि ३ फीट पहले पलक झपकते ही अलर्ट मिले
             setTimeout(() => { requestAnimationFrame(detectFrame); }, 500);
         }
     </script>
