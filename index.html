@@ -3,36 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>स्टेशन साथी एआई (Station Sathi AI) - सुपर विज़न</title>
+    <title>स्टेशन साथी एआई - फाइनल</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 15px; text-align: center; color: #333; }
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 15px; text-align: center; }
         h1 { color: #1a73e8; font-size: 24px; }
         .box { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        input, button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; }
-        button { background-color: #1a73e8; color: white; font-weight: bold; border: none; cursor: pointer; min-height: 48px; }
-        button:active { background-color: #1557b0; }
-        #video { width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: none; margin-top: 10px; }
-        #status { font-weight: bold; color: #d93025; font-size: 18px; margin-top: 10px; }
-        .hidden-label { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+        input, button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border-radius: 5px; box-sizing: border-box; }
+        button { background-color: #1a73e8; color: white; font-weight: bold; border: none; min-height: 48px; }
+        #video { width: 100%; max-width: 100%; height: auto; border-radius: 8px; display: none; }
+        #status { font-weight: bold; color: #d93025; font-size: 18px; }
     </style>
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुपर विज़न) 🚉</h1>
-    <p>स्टेशन पुल, कुर्सी और सभी बाधाओं का मार्गदर्शक मोड</p>
-
-    <div class="box" role="region" aria-label="स्टेशन खोज सेक्शन">
-        <label for="stationInput" class="hidden-label">स्टेशन का छोटा कोड यहाँ लिखें, जैसे बी आई एम या एस टी</label>
-        <input type="text" id="stationInput" placeholder="स्टेशन कोड लिखें (उदा. BIM, ST, RSNR)" autofocus autocomplete="off">
-        <button id="searchBtn" onclick="searchStation()">स्टेशन सर्च और एआई शुरू करें</button>
-        <div id="stationResult" role="live" aria-live="assertive" style="font-size: 20px; font-weight: bold; margin-top: 10px; color: #0d1d30;"></div>
+    <h1>स्टेशन साथी एआई (सुपर विज़न २.०) 🚉</h1>
+    
+    <div class="box">
+        <input type="text" id="stationInput" placeholder="स्टेशन कोड लिखें (उदा. BIM, ST)">
+        <button onclick="searchStation()">सर्च और एआई शुरू करें</button>
+        <div id="stationResult" style="font-size: 18px; font-weight: bold; margin-top: 10px;"></div>
     </div>
 
-    <div class="box" role="region" aria-label="एआई कैमरा सेक्शन">
+    <div class="box">
         <button id="cameraBtn" onclick="toggleCamera()">मैनुअल कैमरा एआई चालू करें</button>
-        <div id="status" role="live" aria-live="assertive">कैमरा अभी बंद है</div>
+        <div id="status">कैमरा अभी बंद है</div>
         <video id="video" autoplay playsinline muted></video>
     </div>
 
@@ -43,139 +39,95 @@
         let isCameraOn = false;
         let model = null;
         let lastSpoken = "";
-        let speechThrottling = false;
 
-        // हिंदी टॉकबैक वॉइस अलर्ट फंक्शन
         function speak(text) {
-            if (text === lastSpoken || speechThrottling) return;
-            
-            speechThrottling = true;
+            if (text === lastSpoken) return;
             window.speechSynthesis.cancel();
             let utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'hi-IN';
-            utterance.rate = 1.1; // थोड़ी तेज़ आवाज़ ताकि तुरंत पता चले
-            
-            utterance.onend = function() {
-                speechThrottling = false;
-            };
-            
             window.speechSynthesis.speak(utterance);
             lastSpoken = text;
-            
-            // २ सेकंड के बाद उसी वाक्य को दोबारा बोलने की अनुमति दें
-            setTimeout(() => { lastSpoken = ""; }, 2000);
+            setTimeout(() => { lastSpoken = ""; }, 3000); // ३ सेकंड का गैप
         }
 
         async function loadStations() {
             try {
                 let response = await fetch('stations.json');
                 stationsData = await response.json();
-                speak("डेटाबेस तैयार है। अपना स्टेशन कोड दर्ज करें।");
-            } catch (error) {
-                console.error("JSON लोड एरर:", error);
-                speak("डेटाबेस लोड नहीं हो सका।");
+                speak("डेटाबेस तैयार है। अपना कोड लिखें।");
+            } catch (e) {
+                speak("डेटाबेस लोड नहीं हुआ।");
             }
         }
         window.onload = loadStations;
 
-        async function searchStation() {
+        function searchStation() {
             let code = document.getElementById('stationInput').value.toUpperCase().trim();
             let resultDiv = document.getElementById('stationResult');
-            
-            if (!code) {
-                speak("कृपया पहले स्टेशन कोड बॉक्स में लिखें।");
-                return;
-            }
-
             if (stationsData[code]) {
-                let stationName = stationsData[code];
-                resultDiv.innerText = stationName;
-                speak(stationName + " मिल गया है। एआई कैमरा अपने आप चालू किया जा रहा है।");
-                
-                setTimeout(() => {
-                    if (!isCameraOn) startCameraEngine();
-                }, 2000);
-                
+                resultDiv.innerText = stationsData[code];
+                speak(stationsData[code] + " मिल गया है। कैमरा लोड हो रहा है।");
+                setTimeout(() => { if(!isCameraOn) startCamera(); }, 2000);
             } else {
-                resultDiv.innerText = "코드 नहीं मिला";
-                speak("यह स्टेशन कोड लिस्ट में नहीं मिला। आप नीचे से मैनुअल कैमरा चालू कर सकते हैं।");
+                resultDiv.innerText = "कोड नहीं मिला";
+                speak("कोड नहीं मिला। आप मैनुअल कैमरा ऑन कर सकते हैं।");
             }
         }
 
-        async function startCameraEngine() {
-            let cameraBtn = document.getElementById('cameraBtn');
-            statusText.innerText = "एआई सुपर मॉडल लोड हो रहा है...";
-            
+        async function startCamera() {
+            statusText.innerText = "एआई मॉडल लोड हो रहा है, कृपया १५ सेकंड रुकें...";
             if (!model) {
                 model = await cocoSsd.load();
             }
-            
             try {
+                // कैमरे का साइज पूरी तरह डायनेमिक रखा है ताकि एरर न आए
                 let stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } },
+                    video: { facingMode: "environment" },
                     audio: false
                 });
                 video.srcObject = stream;
                 video.style.display = "block";
                 isCameraOn = true;
-                cameraBtn.innerText = "कैमरा एआई बंद करें";
-                statusText.innerText = "एआई सुपर विज़न सक्रिय है";
-                speak("सुपर विज़न कैमरा चालू हो चुका है। आगे बढ़ें।");
-                
+                document.getElementById('cameraBtn').innerText = "कैमरा बंद करें";
+                statusText.innerText = "एआई सुरक्षा एक्टिव है";
+                speak("कैमरा शुरू हो गया है। मोबाइल को सीधा सामने रखें।");
                 detectFrame();
             } catch (err) {
-                console.error("कैमरा एक्सेस एरर:", err);
-                statusText.innerText = "कैमरा ऑन नहीं हुआ";
-                speak("कैमरा परमिशन नहीं मिली। कृपया क्रोम सेटिंग्स जांचें।");
+                statusText.innerText = "कैमरा एरर";
+                speak("कैमरा शुरू नहीं हो सका। परमिशन चेक करें।");
             }
-        }
-
-        function stopCameraEngine() {
-            let cameraBtn = document.getElementById('cameraBtn');
-            isCameraOn = false;
-            cameraBtn.innerText = "मैनुअल camera एआई चालू करें";
-            statusText.innerText = "कैमरा बंद है";
-            if (video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
-            }
-            video.style.display = "none";
-            speak("कैमरा बंद कर दिया गया है।");
         }
 
         function toggleCamera() {
-            if (isCameraOn) stopCameraEngine();
-            else startCameraEngine();
+            if (isCameraOn) {
+                isCameraOn = false;
+                document.getElementById('cameraBtn').innerText = "मैनुअल कैमरा एआई चालू करें";
+                statusText.innerText = "कैमरा बंद है";
+                if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+                video.style.display = "none";
+                speak("कैमरा बंद कर दिया गया है।");
+            } else {
+                startCamera();
+            }
         }
 
-        // सभी बाधाओं, कुर्सियों और सीढ़ियों को पहचानने का एडवांस लॉजिक
         async function detectFrame() {
             if (!isCameraOn) return;
-            
-            const predictions = await model.detect(video);
-
-            predictions.forEach(prediction => {
-                let label = prediction.class;
-                let score = prediction.score;
-
-                if (score > 0.50) { // संवेदनशीलता बढ़ाकर ५०% की ताकि चीज़ें जल्दी पकड़ी जाएँ
-                    if (label === "stairs") {
-                        speak("सावधान! सामने पुल की सीढ़ियाँ हैं। धीरे-धीरे चढ़ें।");
-                    } else if (label === "person") {
-                        speak("सामने कोई व्यक्ति या यात्री खड़ा है, संभलकर चलें।");
-                    } else if (label === "chair" || label === "bench") {
-                        speak("सामने बैठने की सीट या कुर्सी है। आप यहाँ विश्राम कर सकते हैं।");
-                    } else if (label === "backpack" || label === "suitcase") {
-                        speak("नीचे ज़मीन पर बैग या सामान रखा है, पैर बचाकर चलें।");
-                    } else if (label === "stop sign" || label === "traffic light") {
-                        speak("सावधान! सामने कोई खंभा या रुकावट है।");
+            try {
+                const predictions = await model.detect(video);
+                predictions.forEach(p => {
+                    if (p.score > 0.40) { // संवेदनशीलता और बढ़ाई है ताकि तुरंत पकड़े
+                        let obj = p.class;
+                        if (obj === "person") speak("सावधान, सामने कोई व्यक्ति खड़ा है।");
+                        else if (obj === "chair" || obj === "bench") speak("सामने बैठने की कुर्सी है।");
+                        else if (obj === "stairs") speak("सामने पुल की सीढ़ियाँ हैं।");
+                        else if (obj === "backpack" || obj === "suitcase") speak("ज़मीन पर सामान या बैग रखा है।");
                     }
-                }
-            });
-
-            // स्कैनिंग की रफ्तार तेज की ताकि ५०० मिलीसेकंड में रिजल्ट मिले
-            setTimeout(() => {
-                requestAnimationFrame(detectFrame);
-            }, 500); 
+                });
+            } catch (e) {
+                console.error(e);
+            }
+            setTimeout(() => { requestAnimationFrame(detectFrame); }, 600);
         }
     </script>
 </body>
