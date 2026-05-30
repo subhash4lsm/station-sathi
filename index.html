@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>स्टेशन साथी एआई (Station Sathi AI)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 15px; text-align: center; color: #333; }
+        h1 { color: #1a73e8; font-size: 24px; }
+        .box { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input, button { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border-radius: 5px; border: 1px solid #ccc; box-sizing: border-box; }
+        button { background-color: #1a73e8; color: white; font-weight: bold; border: none; cursor: pointer; min-height: 48px; }
+        button:active { background-color: #1557b0; }
+        #video { width: 100%; max-width: 400px; height: auto; border-radius: 8px; display: none; margin-top: 10px; transform: scaleX(1); }
+        #status { font-weight: bold; color: #d93025; font-size: 18px; margin-top: 10px; }
+        .hidden-label { position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden; }
+    </style>
+</head>
+<body>
+
+    <h1>स्टेशन साथी एआई 🚉</h1>
+    <p>स्वतंत्र स्टेशन पुल मार्गदर्शक मोड</p>
+
+    <div class="box" role="region" aria-label="स्टेशन खोज सेक्शन">
+        <label for="stationInput" class="hidden-label">स्टेशन का छोटा कोड यहाँ लिखें, जैसे बी आई एम या एस टी</label>
+        <input type="text" id="stationInput" placeholder="स्टेशन कोड लिखें (उदा. BIM, ST, RSNR)" autofocus autocomplete="off">
+        <button id="searchBtn" onclick="searchStation()">स्टेशन सर्च और एआई शुरू करें</button>
+        <div id="stationResult" role="live" aria-live="assertive" style="font-size: 20px; font-weight: bold; margin-top: 10px; color: #0d1d30;"></div>
+    </div>
+
+    <div class="box" role="region" aria-label="एआई कैमरा सेक्शन">
+        <button id="cameraBtn" onclick="toggleCamera()">मैनुअल कैमरा एआई चालू करें</button>
+        <div id="status" role="live" aria-live="assertive">कैमरा अभी बंद है</div>
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+
+    <script>
+        let stationsData = {};
+        let video = document.getElementById('video');
+        let statusText = document.getElementById('status');
+        let isCameraOn = false;
+        let model = null;
+        let lastSpoken = "";
+
+        // स्क्रीन रीडर/टॉकबैक के लिए आवाज बोलने का फंक्शन
+        function speak(text) {
+            if (text === lastSpoken) return;
+            window.speechSynthesis.cancel();
+            let utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'hi-IN';
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+            lastSpoken = text;
+        }
+
+        // रिपॉजिटरी से stations.json लोड करना
+        async function loadStations() {
+            try {
+                let response = await fetch('stations.json');
+                stationsData = await response.json();
+                speak("डेटाबेस तैयार है। अपना स्टेशन कोड दर्ज करें।");
+            } catch (error) {
+                console.error("JSON लोड करने में एरर:", error);
+                speak("डेटाबेस लोड करने में समस्या आई है। कृपया पेज रीफ्रेश करें।");
+            }
+        }
+        window.onload = loadStations;
+
+        // स्टेशन सर्च करने और ऑटो-कैमरा चलाने का लॉजिक
+        async function searchStation() {
+            let code = document.getElementById('stationInput').value.toUpperCase().trim();
+            let resultDiv = document.getElementById('stationResult');
+            
+            if (!code) {
+                speak("कृपया पहले स्टेशन कोड बॉक्स में लिखें।");
+                return;
+            }
+
+            if (stationsData[code]) {
+                let stationName = stationsData[code];
+                resultDiv.innerText = stationName;
+                speak(stationName + " मिल गया है। एआई कैमरा अपने आप चालू किया जा रहा है, कृपया प्रतीक्षा करें।");
+                
+                // कोड मिलने पर २ सेकंड बाद ऑटोमैटिक कैमरा चालू करना
+                setTimeout(() => {
+                    if (!isCameraOn) {
+                        startCameraEngine();
+                    }
+                }, 2000);
+                
+            } else {
+                resultDiv.innerText = "कोड नहीं मिला";
+                speak("यह स्टेशन कोड हमारे डेटाबेस में नहीं मिला। आप नीचे दिए गए बटन से मैनुअल कैमरा एआई चालू करके पुल ढूंढ सकते हैं।");
+            }
+        }
+
+        // कैमरा इंजन शुरू करने का मुख्य फंक्शन
+        async function startCameraEngine() {
+            let cameraBtn = document.getElementById('cameraBtn');
+            statusText.innerText = "एआई मॉडल लोड हो रहा है...";
+            
+            if (!model) {
+                model = await cocoSsd.load();
+            }
+            
+            try {
+                let stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" },
+                    audio: false
+                });
+                video.srcObject = stream;
+                video.style.display = "block";
+                isCameraOn = true;
+                cameraBtn.innerText = "कैमरा एआई बंद करें";
+                statusText.innerText = "एआई सुरक्षा मोड सक्रिय है";
+                speak("एआई कैमरा शुरू हो चुका है। मोबाइल को अपने सीने के पास सीधा रखें और धीरे-धीरे आगे बढ़ें।");
+                
+                detectFrame();
+            } catch (err) {
+                console.error("कैमरा एक्सेस एरर:", err);
+                statusText.innerText = "कैमरा चालू नहीं हो सका";
+                speak("कैमरा चालू करने की अनुमति नहीं मिली। कृपया क्रोम ब्राउज़र में परमिशन चेक करें।");
+            }
+        }
+
+        // कैमरा बंद करने का फंक्शन
+        function stopCameraEngine() {
+            let cameraBtn = document.getElementById('cameraBtn');
+            isCameraOn = false;
+            cameraBtn.innerText = "मैनुअल कैमरा एआई चालू करें";
+            statusText.innerText = "कैमरा बंद है";
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+            video.style.display = "none";
+            speak("कैमरा एआई बंद कर दिया गया है।");
+        }
+
+        // मैनुअल बटन टॉगल लॉजिक
+        function toggleCamera() {
+            if (isCameraOn) {
+                stopCameraEngine();
+            } else {
+                speak("मैनुअल मोड सक्रिय हो रहा है। प्रतीक्षा करें...");
+                startCameraEngine();
+            }
+        }
+
+        // लाइव वीडियो फ्रेम में सीढ़ियां/बाधाएं स्कैन करने का एआई लॉजिक
+        async function detectFrame() {
+            if (!isCameraOn) return;
+            
+            const predictions = await model.detect(video);
+
+            predictions.forEach(prediction => {
+                let label = prediction.class;
+                let score = prediction.score;
+
+                if (score > 0.60) {
+                    if (label === "stairs") {
+                        speak("सावधान! सामने सीढ़ियाँ दिख रही हैं। पुल आ गया है, धीरे-धीरे चढ़ें।");
+                    } else if (label === "person") {
+                        speak("सामने कोई व्यक्ति है, थोड़ा संभलकर चलें।");
+                    }
+                }
+            });
+
+            setTimeout(() => {
+                requestAnimationFrame(detectFrame);
+            }, 800); // प्रोसेसर को हैंग होने से बचाने के लिए ८०० मिलीसेकंड का गैप
+        }
+    </script>
+</body>
+</html>
