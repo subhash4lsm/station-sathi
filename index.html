@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>स्टेशन साथी एआई - महा सुरक्षा कवच</title>
+    <title>स्टेशन साथी एआई - सुरक्षित संस्करण</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
@@ -21,12 +21,12 @@
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (महा सुरक्षा कवच) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षित संस्करण) 🚉</h1>
     
     <div class="box" role="region" aria-label="ट्रेन प्लेटफार्म सर्च">
         <label for="trainInput" style="font-weight: bold; display: block;">लाइव प्लेटफ़ॉर्म जानने के लिए ट्रेन नंबर लिखें:</label>
-        <input type="number" id="trainInput" placeholder="उदा. 12925, 19015" pattern="[0-9]*">
-        <button id="trainBtn" onclick="searchLiveTrain()">ट्रेन प्लेटफ़ॉर्म सर्च करें</button>
+        <input type="number" id="trainInput" placeholder="उदा. 12925, 19218" pattern="[0-9]*">
+        <button id="trainBtn" onclick="searchLiveTrain()">लाइव प्लेटफ़ॉर्म सर्च करें</button>
         <div id="trainStatusResult" role="live" aria-live="assertive"></div>
     </div>
 
@@ -57,7 +57,6 @@
             let utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'hi-IN';
             utterance.rate = isCritical ? 1.2 : 1.0;
-            utterance.pitch = isCritical ? 1.3 : 1.0;
             
             window.speechSynthesis.speak(utterance);
             lastSpoken = text;
@@ -68,18 +67,19 @@
             try {
                 let response = await fetch('stations.json');
                 stationsData = await response.json();
-                speak("स्टेशन साथी सुरक्षा कवच तैयार है।");
+                speak("स्टेशन साथी तैयार है।");
             } catch (e) {
-                speak("डेटाबेस त्रुटि।");
+                speak("डेटाबेस लोड नहीं हुआ।");
             }
         }
         window.onload = loadStations;
 
-        // १. लाइव ट्रेन नंबर सर्च लॉजिक (ओपन सोर्स - नो की रिक्वायर्ड)
+        // लाइव ट्रेन नंबर सर्च - पूरी तरह सुरक्षित मोड
         async function searchLiveTrain() {
             let trainNum = document.getElementById('trainInput').value.trim();
             let resultDiv = document.getElementById('trainStatusResult');
             let trainBtn = document.getElementById('trainBtn');
+            let targetStationCode = document.getElementById('stationInput').value.toUpperCase().trim();
 
             if (!trainNum || trainNum.length < 5) {
                 speak("कृपया ५ अंकों का सही ट्रेन नंबर दर्ज करें।");
@@ -87,43 +87,36 @@
             }
 
             trainBtn.disabled = true;
-            resultDiv.innerText = "लाइव रेलवे सर्वर से कनेक्ट हो रहा है...";
-            speak("रेलवे सर्वर से लाइव जानकारी लाई जा रही है, कृपया प्रतीक्षा करें।");
+            resultDiv.innerText = "लाइव डेटा खोजा जा रहा है...";
+            speak("रेलवे डेटाबेस से लाइव जानकारी खोजी जा रही है, प्रतीक्षा करें।");
 
             try {
-                // ओपन-सोर्स पब्लिक रेलवे एपीआई रूट
+                // नया बिना चाबी वाला पब्लिक रिस्पॉन्सिव रूट
                 let response = await fetch(`https://api.railwayapi.site/v1/train/${trainNum}/live`);
-                
                 if (!response.ok) throw new Error();
                 let data = await response.json();
                 
-                // अगर डेटा मिल जाता है
-                if (data && data.current_station) {
-                    let platform = data.platform || "१ (संभावित)";
-                    let statusMsg = `ट्रेन नंबर ${trainNum}, प्लेटफ़ॉर्म नंबर ${platform} पर आना तय हुआ है। यह जानकारी अभी अपडेट की गई है। कृपया स्टेशन के लाउडस्पीकर की घोषणा से भी इसका मिलान ज़रूर कर लें।`;
-                    
-                    resultDiv.innerText = `प्लेटफ़ॉर्म नंबर: ${platform}\n(अभी-अभी अपडेट किया गया)`;
+                // अगर लाइव डेटा सही सलामत मिल जाता है
+                if (data && data.platform) {
+                    let platform = data.platform;
+                    let statusMsg = `ट्रेन नंबर ${trainNum}, प्लेटफ़ॉर्म नंबर ${platform} पर आ रही है। कृपया सुरक्षा के लिए स्टेशन की लाउडस्पीकर घोषणा से भी इसका मिलान अवश्य करें।`;
+                    resultDiv.innerText = `प्लेटफ़ॉर्म नंबर: ${platform}\n(लाइव अपडेटेड)`;
                     speak(statusMsg);
                 } else {
-                    // अगर लाइव डेटा उपलब्ध न हो तो डमी/कैलकुलेटेड रिस्पॉन्स (ताकि ऐप फेल न दिखे)
-                    let mockPlatform = (parseInt(trainNum) % 4) + 1;
-                    let mockMsg = `ट्रेन नंबर ${trainNum}, प्लेटफ़ॉर्म नंबर ${mockPlatform} पर आने की संभावना है। कृपया स्टेशन के लाउडस्पीकर की घोषणा से भी इसका मिलान ज़रूर कर लें।`;
-                    resultDiv.innerText = `प्लेटफ़ॉर्म नंबर: ${mockPlatform} (अनुमानित)\nडेटा समय: अभी का`;
-                    speak(mockMsg);
+                    // कोई गलत अंदाज़ा लगाने के बजाय साफ़ मना करना
+                    throw new Error();
                 }
             } catch (error) {
-                // इंटरनेट या सर्वर एरर होने पर सुरक्षित बैकअप रिस्पॉन्स
-                let backupPlatform = (parseInt(trainNum) % 3) + 1;
-                let backupMsg = `सर्वर व्यस्त है। अनुमान के अनुसार ट्रेन नंबर ${trainNum} प्लेटफ़ॉर्म नंबर ${backupPlatform} पर आ सकती है। कृपया स्टेशन के लाउडस्पीकर की घोषणा से इसका मिलान अवश्य करें।`;
-                resultDiv.innerText = `प्लेटफ़ॉर्म नंबर: ${backupPlatform} (संभावित)\nकृपया लाउडस्पीकर सुनें`;
+                // एरर आने पर सुरक्षित और ईमानदार जवाब
+                let backupMsg = "क्षमा करें, इस समय लाइव प्लेटफ़ॉर्म डेटा उपलब्ध नहीं है। कृपया सुरक्षित रहने के लिए स्टेशन के लाउडस्पीकर की घोषणा को ध्यान से सुनें।";
+                resultDiv.innerText = "डेटा उपलब्ध नहीं है\nकृपया लाउडस्पीकर सुनें";
                 speak(backupMsg);
             }
 
-            // १० सेकंड के बाद बटन को दोबारा चालू करना (कोटा बचाने के लिए)
+            // १० सेकंड बाद बटन री-एक्टिवेट करना
             setTimeout(() => { trainBtn.disabled = false; }, 10000);
         }
 
-        // २. स्टेशन कोड सर्च लॉजिक
         function searchStation() {
             let code = document.getElementById('stationInput').value.toUpperCase().trim();
             let resultDiv = document.getElementById('stationResult');
@@ -136,7 +129,6 @@
             }
         }
 
-        // ३. एआई सुरक्षा कैमरा लॉजिक
         async function startCamera() {
             statusText.innerText = "एआई सुरक्षा कवच लोड हो रहा है...";
             if (!model) model = await cocoSsd.load();
@@ -149,7 +141,7 @@
                 isCameraOn = true;
                 document.getElementById('cameraBtn').innerText = "सुरक्षा कवच बंद करें";
                 statusText.innerText = "एआई लाइव सुरक्षा सक्रिय है";
-                speak("सुरक्षा कैमरा सक्रिय है। मोबाइल सीधा सामने रखें।");
+                speak("सुरक्षा कैमरा चालू है। मोबाइल सीधा सामने रखें।");
                 detectFrame();
             } catch (err) {
                 statusText.innerText = "कैमरा त्रुटि";
@@ -181,25 +173,20 @@
                     let percentage = (boxSize / videoSize) * 100;
 
                     if (p.score > 0.50) {
-                        // पटरी या गड्ढे का ३-४ फीट पहले अलर्ट
                         if (obj === "stop sign" || obj === "snowboard" || obj === "skateboard") {
                             if (percentage > 25) speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
                         }
-                        // खंभा (सिर बचाने के लिए)
                         else if (obj === "fire hydrant" || obj === "traffic light") {
                             if (percentage > 20) speak("सावधान! ठीक सामने खंभा है, सिर बचाएं।", true);
                         }
-                        // इंसान
                         else if (obj === "person") {
                             if (percentage > 35) speak("संभलकर चलें, ठीक सामने कोई व्यक्ति है।");
                             else speak("आगे एक व्यक्ति है।");
                         }
-                        // कुर्सी या बेंच
                         else if (obj === "chair" || obj === "bench") {
                             if (percentage > 30) speak("सामने बैठने की सीट आ गई है।");
                             else speak("आगे दूर बैठने की बेंच है।");
                         }
-                        // सीढ़ियाँ
                         else if (obj === "stairs") {
                             if (percentage > 25) speak("सामने पुल की सीढ़ियाँ हैं, धीरे चढ़ें।");
                             else speak("आगे पुल की सीढ़ियाँ दिख रही हैं।");
