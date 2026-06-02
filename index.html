@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>स्टेशन साथी एआई - मीडियापाइप सुरक्षा</title>
+    <title>स्टेशन साथी - सुरक्षा कवच</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.js" crossorigin="anonymous"></script>
     
@@ -20,7 +20,7 @@
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षा कवच ४.० - मीडियापाइप) 🚉</h1>
+    <h1>स्टेशन साथी (सुरक्षा कवच ३.४) 🚉</h1>
     
     <div class="box">
         <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
@@ -43,7 +43,6 @@
         let statusText = document.getElementById('status');
         let isCameraOn = false;
         let objectDetector = null;
-        let runningMode = "VIDEO";
         let lastSpokenText = "";
         let lastDetectionTime = 0;
 
@@ -88,28 +87,33 @@
             }
         }
 
-        // मीडियापाइप एआई मॉडल को लोड करना (पूरी तरह फ्री और ऑफलाइन समर्थित)
-        async function initializeMediaPipe() {
-            statusText.innerText = "गूगल मीडियापाइप एआई लोड हो रहा है...";
-            const vision = await filesetResolver.forVisionTasks(
-                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
-            );
-            objectDetector = await vision.ObjectDetector.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
-                    delegate: "GPU"
-                },
-                scoreThreshold: 0.40,
-                runningMode: runningMode
-            });
-            statusText.innerText = "एआई सुरक्षा लोड हो चुकी है।";
+        async function initializeDetector() {
+            statusText.innerText = "सुरक्षा सिस्टम लोड हो रहा है, कृपया प्रतीक्षा करें...";
+            try {
+                const vision = await pools.MediaPipeTasksVision.FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
+                );
+                objectDetector = await pools.MediaPipeTasksVision.ObjectDetector.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+                        delegate: "GPU"
+                    },
+                    scoreThreshold: 0.40,
+                    runningMode: "VIDEO"
+                });
+                statusText.innerText = "सुरक्षा सिस्टम तैयार है।";
+            } catch (err) {
+                console.error("लोडिंग त्रुटि:", err);
+                statusText.innerText = "सिस्टम लोड करने में त्रुटि";
+            }
         }
 
         async function startCamera() {
+            statusText.innerText = "कैमरा शुरू हो रहा है...";
+            
             if (!objectDetector) {
-                const filesetResolver = await MediaPipeTasksVision.FilesetResolver;
-                window.filesetResolver = filesetResolver;
-                await initializeMediaPipe();
+                window.pools = { MediaPipeTasksVision: window["@mediapipe/tasks-vision"] };
+                await initializeDetector();
             }
             
             try {
@@ -121,12 +125,12 @@
                 video.style.display = "block";
                 isCameraOn = true;
                 document.getElementById('cameraBtn').innerText = "सुरक्षा कवच बंद करें";
-                statusText.innerText = "एआई लाइव सुरक्षा सक्रिय है";
+                statusText.innerText = "लाइव सुरक्षा सक्रिय है";
                 speak("सुरक्षा कैमरा सक्रिय है। मोबाइल सीधे सीने पर रखें।");
                 
                 video.addEventListener("loadeddata", predictVideo);
             } catch (err) {
-                statusText.innerText = "कैमरा त्रुटि";
+                statusText.innerText = "कैमरा अनुमति एरर";
                 speak("कैमरा ऑन नहीं हो सका।");
             }
         }
@@ -134,7 +138,7 @@
         function toggleCamera() {
             if (isCameraOn) {
                 isCameraOn = false;
-                document.getElementById('cameraBtn').innerText = "मैनुअल कैमरा सुरक्षा On करें";
+                document.getElementById('cameraBtn').innerText = "मैनुअल camera सुरक्षा On करें";
                 statusText.innerText = "सुरक्षा मोड बंद है";
                 if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
                 video.style.display = "none";
@@ -145,15 +149,14 @@
             }
         }
 
-        // मीडियापाइप का रियल-टाइम हाई-स्पीड डिटेक्शन लूप
         async function predictVideo() {
             if (!isCameraOn) return;
 
             let now = performance.now();
-            if (now - lastDetectionTime >= 450) { // प्रत्येक ४५०ms में एक बार स्कैनिंग
+            if (now - lastDetectionTime >= 450) { 
                 lastDetectionTime = now;
                 
-                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                if (video.videoWidth > 0 && video.videoHeight > 0 && objectDetector) {
                     const detections = await objectDetector.detectForVideo(video, now);
                     processDetections(detections.detections);
                 }
@@ -169,7 +172,6 @@
                 let obj = detection.categories[0].categoryName.toLowerCase();
                 let score = detection.categories[0].score;
                 
-                // दूरी का सटीक आकलन (प्रतिशत के आधार पर)
                 let box = detection.boundingBox;
                 let boxSize = box.width * box.height;
                 let videoSize = video.videoWidth * video.videoHeight;
@@ -179,7 +181,7 @@
                     
                     // १. प्लेटफार्म किनारा / पटरी सुरक्षा (खतरा मोड)
                     if (obj === "stop sign" || obj === "barrier" || obj === "snowboard" || obj === "skateboard") {
-                        if (percentage > 22) { // ३-४ फीट की दूरी
+                        if (percentage > 22) {
                             speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
                         } else {
                             speak("सावधान, आगे कुछ दूरी पर प्लेटफार्म का किनारा या ढलान है।");
@@ -190,7 +192,7 @@
                     else if (obj === "chair" || obj === "bench" || obj === "bed" || obj === "couch") {
                         let aspectRatio = box.width / box.height;
                         if (aspectRatio > 2.8 || aspectRatio < 0.35) {
-                            return; // ग्रिल या लंबी रेलिंग को कुर्सी मानने से रोकेगा
+                            return; 
                         }
                         
                         if (percentage > 32) {
