@@ -12,7 +12,6 @@
         .box { background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         input, button, .irctc-link { width: 100%; padding: 15px; margin: 10px 0; font-size: 18px; border-radius: 5px; box-sizing: border-box; display: block; }
         button { background-color: #1a73e8; color: white; font-weight: bold; border: none; min-height: 48px; }
-        /* नए आईआरसीटीसी बटन का स्टाइल जो एक सीधा लिंक है */
         .irctc-link { background-color: #e67e22; color: white; font-weight: bold; text-decoration: none; text-align: center; line-height: 20px; }
         #video { width: 100%; max-width: 100%; height: auto; border-radius: 8px; display: none; }
         #status { font-weight: bold; color: #d93025; font-size: 18px; }
@@ -20,7 +19,7 @@
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.४) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.४ - अपडेटेड) 🚉</h1>
     
     <div class="box">
         <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
@@ -44,12 +43,14 @@
         let isCameraOn = false;
         let model = null;
         let lastSpoken = "";
+        let speechTimeout = null;
 
         function speak(text, isCritical = false) {
             if (text === lastSpoken && !isCritical) return;
             
             if (isCritical) {
                 window.speechSynthesis.cancel();
+                if (speechTimeout) clearTimeout(speechTimeout);
             }
             
             let utterance = new SpeechSynthesisUtterance(text);
@@ -65,7 +66,7 @@
             window.speechSynthesis.speak(utterance);
             lastSpoken = text;
             
-            setTimeout(() => { lastSpoken = ""; }, isCritical ? 1000 : 3000);
+            speechTimeout = setTimeout(() => { lastSpoken = ""; }, isCritical ? 1500 : 3500);
         }
 
         async function loadStations() {
@@ -85,7 +86,11 @@
             if (stationsData[code]) {
                 resultDiv.innerText = stationsData[code];
                 speak(stationsData[code] + " मिल गया है। सुरक्षा कैमरा एक्टिवेट हो रहा है।");
-                setTimeout(() => { if(!isCameraOn) startCamera(); }, 2000);
+                
+                // टाइमर को ३ सेकंड किया ताकि पहली घोषणा पूरी तरह साफ़ सुनाई दे
+                setTimeout(() => { 
+                    if(!isCameraOn) startCamera(); 
+                }, 3000);
             } else {
                 resultDiv.innerText = "कोड अज्ञात";
                 speak("कोड नहीं मिला। कृपया मैनुअल सुरक्षा मोड ऑन करें।");
@@ -108,7 +113,11 @@
                 document.getElementById('cameraBtn').innerText = "सुरक्षा कवच बंद करें";
                 statusText.innerText = "एआई लाइव सुरक्षा सक्रिय है";
                 speak("सुरक्षा कैमरा सक्रिय है। मोबाइल सीधे सीने पर रखें।");
-                detectFrame();
+                
+                // वीडियो डेटा पूरी तरह लोड होने का इंतज़ार करने के बाद ही लूप चलाएँगे
+                video.onloadeddata = () => {
+                    detectFrame();
+                };
             } catch (err) {
                 statusText.innerText = "कैमरा त्रुटि";
                 speak("कैमरा ऑन नहीं हो सका।");
@@ -130,6 +139,13 @@
 
         async function detectFrame() {
             if (!isCameraOn) return;
+            
+            // सुरक्षा जाँच: यदि वीडियो अभी तैयार नहीं है या उसकी चौड़ाई शून्य है, तो लूप को टूटने न दें
+            if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+                setTimeout(() => { requestAnimationFrame(detectFrame); }, 200);
+                return;
+            }
+
             try {
                 const predictions = await model.detect(video);
                 predictions.forEach(p => {
@@ -175,8 +191,10 @@
                     }
                 });
             } catch (e) {
-                console.error(e);
+                console.error("डिटेक्शन एरर को संभाला गया:", e);
             }
+            
+            // कैच ब्लॉक के बाद भी यह टाइमर सुनिश्चित करेगा कि लूप कभी न टूटे
             setTimeout(() => { requestAnimationFrame(detectFrame); }, 500);
         }
     </script>
