@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>स्टेशन साथी एआई - लाइफ सेवर</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <title>स्टेशन साथी एआई - मीडियापाइप सुरक्षा</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.js" crossorigin="anonymous"></script>
+    
     <style>
         body { font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 15px; text-align: center; }
         h1 { color: #1a73e8; font-size: 24px; }
@@ -19,7 +20,7 @@
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.७) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षा कवच ४.० - मीडियापाइप) 🚉</h1>
     
     <div class="box">
         <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
@@ -41,18 +42,15 @@
         let video = document.getElementById('video');
         let statusText = document.getElementById('status');
         let isCameraOn = false;
-        let model = null;
-        
-        // लगातार बोलने और पास/दूर की सटीक ट्रैकिंग के लिए ग्लोबल मेमरी
+        let objectDetector = null;
+        let runningMode = "VIDEO";
         let lastSpokenText = "";
-        let objectDisappearTimers = {};
+        let lastDetectionTime = 0;
 
         function speak(text, isCloseAlert = false) {
-            // यदि व्यक्ति किसी वस्तु के बिल्कुल पास आ चुका है, तो पुराना टीटीएस तुरंत काटकर बार-बार चिल्लाएँ
             if (isCloseAlert) {
                 window.speechSynthesis.cancel();
             } else {
-                // यदि साधारण दूर की चेतावनी है और ऐप अभी बोल रही है, तो कतार में नया टेक्स्ट न डालें
                 if (window.speechSynthesis.speaking && text === lastSpokenText) {
                     return;
                 }
@@ -90,11 +88,30 @@
             }
         }
 
+        // मीडियापाइप एआई मॉडल को लोड करना (पूरी तरह फ्री और ऑफलाइन समर्थित)
+        async function initializeMediaPipe() {
+            statusText.innerText = "गूगल मीडियापाइप एआई लोड हो रहा है...";
+            const vision = await filesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
+            );
+            objectDetector = await vision.ObjectDetector.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite",
+                    delegate: "GPU"
+                },
+                scoreThreshold: 0.40,
+                runningMode: runningMode
+            });
+            statusText.innerText = "एआई सुरक्षा लोड हो चुकी है।";
+        }
+
         async function startCamera() {
-            statusText.innerText = "एआई सुरक्षा कवच लोड हो रहा है...";
-            if (!model) {
-                model = await cocoSsd.load();
+            if (!objectDetector) {
+                const filesetResolver = await MediaPipeTasksVision.FilesetResolver;
+                window.filesetResolver = filesetResolver;
+                await initializeMediaPipe();
             }
+            
             try {
                 let stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: "environment" },
@@ -107,7 +124,7 @@
                 statusText.innerText = "एआई लाइव सुरक्षा सक्रिय है";
                 speak("सुरक्षा कैमरा सक्रिय है। मोबाइल सीधे सीने पर रखें।");
                 
-                setTimeout(() => { detectFrame(); }, 500);
+                video.addEventListener("loadeddata", predictVideo);
             } catch (err) {
                 statusText.innerText = "कैमरा त्रुटि";
                 speak("कैमरा ऑन नहीं हो सका।");
@@ -128,118 +145,107 @@
             }
         }
 
-        async function detectFrame() {
+        // मीडियापाइप का रियल-टाइम हाई-स्पीड डिटेक्शन लूप
+        async function predictVideo() {
             if (!isCameraOn) return;
-            
-            if (video.videoWidth === 0 || video.videoHeight === 0) {
-                setTimeout(() => { requestAnimationFrame(detectFrame); }, 200);
-                return;
+
+            let now = performance.now();
+            if (now - lastDetectionTime >= 450) { // प्रत्येक ४५०ms में एक बार स्कैनिंग
+                lastDetectionTime = now;
+                
+                if (video.videoWidth > 0 && video.videoHeight > 0) {
+                    const detections = await objectDetector.detectForVideo(video, now);
+                    processDetections(detections.detections);
+                }
             }
+            
+            if (isCameraOn) {
+                window.requestAnimationFrame(predictVideo);
+            }
+        }
 
-            try {
-                const predictions = await model.detect(video);
-                let detectedThisFrame = new Set();
+        function processDetections(detections) {
+            detections.forEach(detection => {
+                let obj = detection.categories[0].categoryName.toLowerCase();
+                let score = detection.categories[0].score;
+                
+                // दूरी का सटीक आकलन (प्रतिशत के आधार पर)
+                let box = detection.boundingBox;
+                let boxSize = box.width * box.height;
+                let videoSize = video.videoWidth * video.videoHeight;
+                let percentage = (boxSize / videoSize) * 100;
 
-                predictions.forEach(p => {
-                    let obj = p.class;
-                    let boxSize = p.bbox[2] * p.bbox[3]; 
-                    let videoSize = video.videoWidth * video.videoHeight;
-                    let percentage = (boxSize / videoSize) * 100;
-
-                    if (p.score > 0.35) { // संवेदनशीलता बढ़ाई ताकि स्टेशन की चीजें मिस न हों
-                        
-                        // १. प्लेटफार्म का किनारा/गड्ढा (सुरक्षा कवच)
-                        if (obj === "stop sign" || obj === "snowboard" || obj === "skateboard") {
-                            detectedThisFrame.add("danger");
-                            if (percentage > 22) {
-                                speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
-                            } else {
-                                speak("सावधान, आगे कुछ दूरी पर प्लेटफार्म का किनारा या ढलान है।");
-                            }
-                        }
-                        
-                        // २. बैठने का स्थान (कुर्सी, बेंच, बेड/चारपाई)
-                        else if (obj === "chair" || obj === "bench" || obj === "bed") {
-                            detectedThisFrame.add("seat");
-                            if (percentage > 30) {
-                                speak("सामने बैठने की सीट आ गई है, आप बैठ सकते हैं।", true);
-                            } else {
-                                speak("आगे कुछ दूरी पर बैठने की बेंच या सीट है।");
-                            }
-                        }
-                        
-                        // ३. स्टेशन के पुल की सीढ़ियाँ (Stairs)
-                        else if (obj === "stairs") {
-                            detectedThisFrame.add("stairs");
-                            if (percentage > 25) {
-                                speak("सावधान! ठीक सामने पुल की सीढ़ियाँ हैं, धीरे चढ़ें।", true);
-                            } else {
-                                speak("आगे पुल की सीढ़ियाँ दिखाई दे रही हैं।");
-                            }
-                        }
-
-                        // ४. वॉटर कूलर / पानी पीने का स्थान (सिंक कीवर्ड से ट्रैकिंग)
-                        else if (obj === "sink") {
-                            detectedThisFrame.add("water");
-                            if (percentage > 25) {
-                                speak("ठीक सामने पानी पीने का स्थान या वॉटर कूलर है।", true);
-                            } else {
-                                speak("आगे आसपास पानी पीने की जगह या वॉशबेसिन है।");
-                            }
-                        }
-
-                        // ५. टॉयलेट या कमरा (दरवाजा कीवर्ड से ट्रैकिंग)
-                        else if (obj === "door") {
-                            detectedThisFrame.add("toilet");
-                            if (percentage > 30) {
-                                speak("सामने टॉयलेट या कमरे का दरवाजा आ गया है।", true);
-                            } else {
-                                speak("आगे एक दरवाजा दिख रहा है।");
-                            }
-                        }
-
-                        // ६. सामने खंभा या लाइट पोस्ट
-                        else if (obj === "fire hydrant" || obj === "traffic light") {
-                            detectedThisFrame.add("pole");
-                            if (percentage > 20) {
-                                speak("सावधान! ठीक सामने स्टेशन का खंभा है, सिर बचाएं।", true);
-                            } else {
-                                speak("आगे एक खंभा दिख रहा है।");
-                            }
-                        }
-
-                        // ७. सामने मौजूद यात्री/व्यक्ति
-                        else if (obj === "person") {
-                            detectedThisFrame.add("person");
-                            if (percentage > 35) {
-                                speak("संभलकर चलें, ठीक सामने कोई व्यक्ति है।", true);
-                            } else {
-                                speak("आगे कोई व्यक्ति है।");
-                            }
+                if (score > 0.40) {
+                    
+                    // १. प्लेटफार्म किनारा / पटरी सुरक्षा (खतरा मोड)
+                    if (obj === "stop sign" || obj === "barrier" || obj === "snowboard" || obj === "skateboard") {
+                        if (percentage > 22) { // ३-४ फीट की दूरी
+                            speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
+                        } else {
+                            speak("सावधान, आगे कुछ दूरी पर प्लेटफार्म का किनारा या ढलान है।");
                         }
                     }
-                });
+                    
+                    // २. बैठने का स्थान (कुर्सी, बेंच, बेड) - ग्रिल फिल्टर के साथ
+                    else if (obj === "chair" || obj === "bench" || obj === "bed" || obj === "couch") {
+                        let aspectRatio = box.width / box.height;
+                        if (aspectRatio > 2.8 || aspectRatio < 0.35) {
+                            return; // ग्रिल या लंबी रेलिंग को कुर्सी मानने से रोकेगा
+                        }
+                        
+                        if (percentage > 32) {
+                            speak("सामने बैठने की सीट आ गई है, आप बैठ सकते हैं।", true);
+                        } else {
+                            speak("आगे कुछ दूरी पर बैठने की बेंच या सीट है।");
+                        }
+                    }
+                    
+                    // ३. सीढ़ियाँ (Stairs)
+                    else if (obj === "stairs" || obj === "staircase") {
+                        if (percentage > 25) {
+                            speak("सावधान! ठीक सामने पुल की सीढ़ियाँ हैं, धीरे चढ़ें।", true);
+                        } else {
+                            speak("आगे पुल की सीढ़ियाँ दिखाई दे रही हैं।");
+                        }
+                    }
 
-                // स्मार्ट क्लोज-रेंज लॉजिक: अगर कोई चीज बहुत पास आने के कारण अचानक गायब हुई है, तो भी अलर्ट करें
-                if (!detectedThisFrame.has("seat") && lastSpokenText.includes("बेंच") && !window.speechSynthesis.speaking) {
-                    speak("सीट बिल्कुल आपके पास है, स्पर्श करके बैठें।", true);
-                    lastSpokenText = "";
-                }
-                if (!detectedThisFrame.has("stairs") && lastSpokenText.includes("सीढ़ियाँ") && !window.speechSynthesis.speaking) {
-                    speak("सीढ़ियाँ बिल्कुल आपके पैरों के पास आ चुकी हैं, संभलें।", true);
-                    lastSpokenText = "";
-                }
-                if (!detectedThisFrame.has("water") && lastSpokenText.includes("पानी") && !window.speechSynthesis.speaking) {
-                    speak("वॉटर कूलर बिल्कुल सामने है।", true);
-                    lastSpokenText = "";
-                }
+                    // ४. वॉटर कूलर / सिंक (पानी पीने का स्थान)
+                    else if (obj === "sink" || obj === "faucet") {
+                        if (percentage > 25) {
+                            speak("ठीक सामने पानी पीने का स्थान या वॉटर कूलर है।", true);
+                        } else {
+                            speak("आगे आसपास पानी पीने की जगह है।");
+                        }
+                    }
 
-            } catch (e) {
-                console.error("सुरक्षित एआई लूप:", e);
-            }
-            
-            // ४५०ms का लूप ताकि रिस्पांस टाइम रेलवे स्टेशन पर और तेज हो सके
-            setTimeout(() => { requestAnimationFrame(detectFrame); }, 450);
+                    // ५. टॉयलेट गेट / कमरा दरवाजा
+                    else if (obj === "door") {
+                        if (percentage > 30) {
+                            speak("सामने टॉयलेट या कमरे का दरवाजा आ गया है।", true);
+                        } else {
+                            speak("आगे एक दरवाजा दिख रहा है।");
+                        }
+                    }
+
+                    // ६. खंभा या पोल
+                    else if (obj === "fire hydrant" || obj === "traffic light" || obj === "pole") {
+                        if (percentage > 20) {
+                            speak("सावधान! ठीक सामने स्टेशन का खंभा है, सिर बचाएं।", true);
+                        } else {
+                            speak("आगे एक खंभा दिख रहा है।");
+                        }
+                    }
+
+                    // ७. सामने मौजूद अन्य यात्री
+                    else if (obj === "person") {
+                        if (percentage > 35) {
+                            speak("संभलकर चलें, ठीक सामने कोई व्यक्ति है।", true);
+                        } else {
+                            speak("आगे कोई व्यक्ति है।");
+                        }
+                    }
+                }
+            });
         }
     </script>
 </body>
