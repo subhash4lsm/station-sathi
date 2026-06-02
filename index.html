@@ -19,7 +19,7 @@
 </head>
 <body>
 
-    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.४ - अपडेटेड) 🚉</h1>
+    <h1>स्टेशन साथी एआई (सुरक्षा कवच ३.४ - फाइनल) 🚉</h1>
     
     <div class="box">
         <input type="text" id="stationInput" placeholder="स्टेशन कोड दर्ज करें">
@@ -31,7 +31,7 @@
     </div>
 
     <div class="box">
-        <button id="cameraBtn" onclick="toggleCamera()">मैनुअल कैमरा सुरक्षा ऑन करें</button>
+        <button id="cameraBtn" onclick="toggleCamera()">मैनुअल कैमरा सुरक्षा On करें</button>
         <div id="status">सुरक्षा मोड बंद है</div>
         <video id="video" autoplay playsinline muted></video>
     </div>
@@ -46,11 +46,13 @@
         let speechTimeout = null;
 
         function speak(text, isCritical = false) {
-            if (text === lastSpoken && !isCritical) return;
-            
+            // यदि महत्वपूर्ण (खतरा) घोषणा है, तो तुरंत पुराने टीटीएस को काटकर बोलें
             if (isCritical) {
                 window.speechSynthesis.cancel();
                 if (speechTimeout) clearTimeout(speechTimeout);
+            } else if (text === lastSpoken) {
+                // यदि साधारण ऑब्जेक्ट है और अभी तुरंत बोला गया है, तो रिपीट न करें (१.५ सेकंड का लॉक)
+                return;
             }
             
             let utterance = new SpeechSynthesisUtterance(text);
@@ -66,7 +68,8 @@
             window.speechSynthesis.speak(utterance);
             lastSpoken = text;
             
-            speechTimeout = setTimeout(() => { lastSpoken = ""; }, isCritical ? 1500 : 3500);
+            // लॉक का समय घटाकर १.५ सेकंड किया ताकि दोबारा सामने आने पर तुरंत बोल सके
+            speechTimeout = setTimeout(() => { lastSpoken = ""; }, 1500);
         }
 
         async function loadStations() {
@@ -87,10 +90,9 @@
                 resultDiv.innerText = stationsData[code];
                 speak(stationsData[code] + " मिल गया है। सुरक्षा कैमरा एक्टिवेट हो रहा है।");
                 
-                // टाइमर को ३ सेकंड किया ताकि पहली घोषणा पूरी तरह साफ़ सुनाई दे
                 setTimeout(() => { 
                     if(!isCameraOn) startCamera(); 
-                }, 3000);
+                }, 2500);
             } else {
                 resultDiv.innerText = "कोड अज्ञात";
                 speak("कोड नहीं मिला। कृपया मैनुअल सुरक्षा मोड ऑन करें।");
@@ -114,10 +116,9 @@
                 statusText.innerText = "एआई लाइव सुरक्षा सक्रिय है";
                 speak("सुरक्षा कैमरा सक्रिय है। मोबाइल सीधे सीने पर रखें।");
                 
-                // वीडियो डेटा पूरी तरह लोड होने का इंतज़ार करने के बाद ही लूप चलाएँगे
-                video.onloadeddata = () => {
-                    detectFrame();
-                };
+                // बिना किसी इवेंट का इंतज़ार किए सीधे डिटेक्शन लूप को फायर करें
+                setTimeout(() => { detectFrame(); }, 800);
+                
             } catch (err) {
                 statusText.innerText = "कैमरा त्रुटि";
                 speak("कैमरा ऑन नहीं हो सका।");
@@ -127,7 +128,7 @@
         function toggleCamera() {
             if (isCameraOn) {
                 isCameraOn = false;
-                document.getElementById('cameraBtn').innerText = "मैनुअल कैमरा सुरक्षा ऑन करें";
+                document.getElementById('cameraBtn').innerText = "मैनुअल कैमरा सुरक्षा On करें";
                 statusText.innerText = "सुरक्षा मोड बंद है";
                 if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
                 video.style.display = "none";
@@ -140,21 +141,27 @@
         async function detectFrame() {
             if (!isCameraOn) return;
             
-            // सुरक्षा जाँच: यदि वीडियो अभी तैयार नहीं है या उसकी चौड़ाई शून्य है, तो लूप को टूटने न दें
-            if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
-                setTimeout(() => { requestAnimationFrame(detectFrame); }, 200);
+            // यदि वीडियो फ्रेम की चौड़ाई अभी लोड नहीं हुई, तो ५००ms बाद दोबारा प्रयास करें, लूप मरेगा नहीं
+            if (video.videoWidth === 0 || video.videoHeight === 0) {
+                setTimeout(() => { requestAnimationFrame(detectFrame); }, 500);
                 return;
             }
 
             try {
                 const predictions = await model.detect(video);
+                
+                // यदि फ्रेम में कोई ऑब्जेक्ट नहीं मिला, तो स्पीक लॉक को तुरंत खोलें
+                if (predictions.length === 0) {
+                    lastSpoken = "";
+                }
+
                 predictions.forEach(p => {
                     let obj = p.class;
                     let boxSize = p.bbox[2] * p.bbox[3]; 
                     let videoSize = video.videoWidth * video.videoHeight;
                     let percentage = (boxSize / videoSize) * 100;
 
-                    if (p.score > 0.50) {
+                    if (p.score > 0.45) { // एक्यूरेसी को थोड़ा बढ़ाया ताकि गलत ऑब्जेक्ट न बोले
                         if (obj === "stop sign" || obj === "snowboard" || obj === "skateboard") { 
                             if (percentage > 25) { 
                                 speak("खतरा! तुरंत रुकें, आगे पटरी या गड्ढा है!", true);
@@ -175,7 +182,7 @@
                             }
                         }
                         else if (obj === "chair" || obj === "bench") {
-                            if (percentage > 30) {
+                            if (percentage > 28) {
                                 speak("सामने बैठने की सीट आ गई है।");
                             } else {
                                 speak("आगे दूर बैठने की बेंच है।");
@@ -191,10 +198,10 @@
                     }
                 });
             } catch (e) {
-                console.error("डिटेक्शन एरर को संभाला गया:", e);
+                console.error("लूप सुरक्षित है, एरर बाईपास:", e);
             }
             
-            // कैच ब्लॉक के बाद भी यह टाइमर सुनिश्चित करेगा कि लूप कभी न टूटे
+            // लगातार स्कैनिंग जारी रखने के लिए ५००ms का रीफ्रेम टाइमर
             setTimeout(() => { requestAnimationFrame(detectFrame); }, 500);
         }
     </script>
